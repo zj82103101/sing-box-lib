@@ -422,16 +422,25 @@ jobs:
       - name: Build library
         id: build_android
         run: |-
-          echo "=== Starting Android Library Build ==="
+          echo "=== Starting Customized Android Library Build ==="
           
-          # Install dependencies using official sing-box method
+          # 1. 安装基础依赖
           make lib_install
           export PATH="$PATH:$(go env GOPATH)/bin"
           
-          # Build Android library using official sing-box method
-          echo "Building Android library using official sing-box method..."
-          make lib_android
+          # 2. 定制化编译 (核心修改点)
+          # 我们不再使用默认的 'make lib_android'，因为它会包含所有协议且包含 32位架构
+          # 仅编译 arm64-v8a (减小 50% 体积)
+          # 使用定制 tags (减小 30% 体积)
+          # -ldflags="-s -w" (减小约 5MB 体积)
           
+          gomobile bind -v \
+            -androidapi 21 \
+            -target=android/arm64 \
+            -ldflags="-s -w" \
+            -tags "with_vless with_vmess with_quic with_dns with_tun with_ech with_utls" \
+            ./experimental/libbox
+
           echo "=== Post-build Verification ==="
           if [ -f "libbox.aar" ]; then
             echo "✅ libbox.aar created successfully"
@@ -441,24 +450,17 @@ jobs:
             exit 1
           fi
           
-          # Create a directory for packaging
+          # 3. 打包产物 (保持原脚本逻辑以便后续发布)
           mkdir -p artifacts
-          
-          # Package the AAR file with proper directory structure
           mkdir -p libbox-android
           cp libbox.aar libbox-android/
-          
-          # Zip the directory for compatibility
           zip -ry libbox-android.aar.zip libbox-android
           
-          # Calculate checksum and set output
           ANDROID_CHECKSUM="$(sha256sum libbox-android.aar.zip | cut -d ' ' -f 1)"
           echo "android_checksum=${ANDROID_CHECKSUM}" >> $GITHUB_OUTPUT
-          
-          # Copy to artifacts directory for upload
           cp libbox-android.aar.zip artifacts/
           
-          echo "✅ Android library built with checksum: ${ANDROID_CHECKSUM}"
+          echo "✅ Customized Android library built with checksum: ${ANDROID_CHECKSUM}"
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
